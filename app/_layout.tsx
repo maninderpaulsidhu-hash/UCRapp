@@ -1,23 +1,18 @@
-import { Stack } from 'expo-router';
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 
 export default function RootLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: '#1d4ed8' },
-        headerTintColor: '#ffffff',
-        headerTitleStyle: { fontWeight: '600' },
-        contentStyle: { backgroundColor: '#f1f5f9' },
-      }}
-    >
-      <Stack.Screen name="index" options={{ title: 'UCR CCM Fellowship' }} />
-      <Stack.Screen name="acls" options={{ title: 'ACLS' }} />
-      <Stack.Screen name="intubation/index" options={{ title: 'Intubation' }} />
-      <Stack.Screen
-        name="intubation/checklist"
-        options={{ title: 'RSI Checklist' }}
+    <>
+      <StatusBar style="auto" />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: "#1d4ed8" },
+          headerTintColor: "#fff",
+          headerTitleStyle: { fontWeight: "bold" },
+          contentStyle: { backgroundColor: "#f9fafb" },
+        }}
       />
-      <Stack.Screen name="sbmc-codes" options={{ title: 'SBMC Codes' }} />
-    </Stack>
+    </>
   );
 }

@@ -1,358 +1,245 @@
-import { useEffect, useRef, useState } from 'react';
-import { ScrollView, View, Text, Pressable, Alert, StyleSheet } from 'react-native';
+import { useEffect, useRef, useState } from "react";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Stack } from "expo-router";
 
-const EPI_DURATION = 4 * 60; // seconds
-
-const DRUGS = [
-  'Epi 1mg',
-  'Amiodarone 300/150mg',
-  'Lidocaine 1-1.5mg/kg',
-  'NaHCO3 1 AMP',
-  'Calcium 1g',
-];
-
-const HS_AND_TS = [
-  'Hypovolemia',
-  'Hypoxia',
-  "Hydrogen ion (Acidosis)",
-  'Hypo-/Hyperkalemia',
-  'Hypothermia',
-  'Tension pneumothorax',
-  'Tamponade (cardiac)',
-  'Toxins',
-  'Thrombosis (pulmonary)',
-  'Thrombosis (coronary)',
-];
-
-type LogEntry = { id: string; time: string; label: string };
-
-function formatTime(totalSeconds: number) {
-  const s = Math.max(0, Math.floor(totalSeconds));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m}:${r.toString().padStart(2, '0')}`;
+interface LogEntry {
+  msg: string;
+  time: string;
 }
 
-export default function Acls() {
-  const [caseRunning, setCaseRunning] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const [epiRunning, setEpiRunning] = useState(false);
-  const [epiRemaining, setEpiRemaining] = useState(EPI_DURATION);
-  const [log, setLog] = useState<LogEntry[]>([]);
-  const [checkedHT, setCheckedHT] = useState<Record<string, boolean>>({});
+const HS = ["Hypovolemia", "Hypoxia", "Hydrogen ion (Acidosis)", "Hypo/Hyperkalemia", "Hypothermia"];
+const TS = ["Tension pneumothorax", "Tamponade (cardiac)", "Toxins", "Thrombosis (pulmonary)", "Thrombosis (coronary)"];
 
-  const caseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const epiIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+function formatTime(s: number) {
+  const m = Math.floor(s / 60).toString().padStart(2, "0");
+  const sec = (s % 60).toString().padStart(2, "0");
+  return `${m}:${sec}`;
+}
+
+function nowHHMM() {
+  const d = new Date();
+  return d.getHours().toString().padStart(2, "0") + d.getMinutes().toString().padStart(2, "0");
+}
+
+export default function ACLSScreen() {
+  const [caseRunning, setCaseRunning] = useState(false);
+  const [totalSeconds, setTotalSeconds] = useState(0);
+  const [epiTime, setEpiTime] = useState(0);
+  const [epiActive, setEpiActive] = useState(false);
+  const [log, setLog] = useState<LogEntry[]>([]);
+  const [amioDoseCount, setAmioDoseCount] = useState(0);
+  const [checkedHs, setCheckedHs] = useState<Set<string>>(new Set());
+  const [checkedTs, setCheckedTs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (caseRunning) {
-      caseIntervalRef.current = setInterval(() => {
-        setElapsed((e) => e + 1);
-      }, 1000);
-    } else if (caseIntervalRef.current) {
-      clearInterval(caseIntervalRef.current);
-      caseIntervalRef.current = null;
-    }
-    return () => {
-      if (caseIntervalRef.current) clearInterval(caseIntervalRef.current);
-    };
+    if (!caseRunning) return;
+    const id = setInterval(() => setTotalSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
   }, [caseRunning]);
 
   useEffect(() => {
-    if (epiRunning) {
-      epiIntervalRef.current = setInterval(() => {
-        setEpiRemaining((r) => {
-          if (r <= 1) {
-            setEpiRunning(false);
-            return 0;
-          }
-          return r - 1;
-        });
-      }, 1000);
-    } else if (epiIntervalRef.current) {
-      clearInterval(epiIntervalRef.current);
-      epiIntervalRef.current = null;
-    }
-    return () => {
-      if (epiIntervalRef.current) clearInterval(epiIntervalRef.current);
-    };
-  }, [epiRunning]);
+    if (!caseRunning || !epiActive || epiTime <= 0) return;
+    const id = setInterval(() => setEpiTime((t) => t - 1), 1000);
+    return () => clearInterval(id);
+  }, [caseRunning, epiActive, epiTime]);
 
-  const addLog = (label: string) => {
-    setLog((prev) => [
-      { id: `${Date.now()}-${Math.random()}`, time: formatTime(elapsed), label },
-      ...prev,
-    ]);
+  const logEvent = (msg: string) => {
+    setLog((prev) => [{ msg, time: nowHHMM() }, ...prev]);
   };
 
   const startCase = () => {
+    setTotalSeconds(0);
+    setEpiTime(0);
+    setEpiActive(false);
+    setLog([]);
+    setAmioDoseCount(0);
+    setCheckedHs(new Set());
+    setCheckedTs(new Set());
     setCaseRunning(true);
-    addLog('Case started');
+    logEvent("Case started");
   };
 
-  const pauseCase = () => {
+  const stopCase = () => {
     setCaseRunning(false);
-    addLog('Case paused');
+    logEvent(`Case ended — total time: ${formatTime(totalSeconds)}`);
   };
 
-  const resetCase = () => {
-    Alert.alert('Reset case?', 'This clears the timer, epi timer, log, and checklist.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Reset',
-        style: 'destructive',
-        onPress: () => {
-          setCaseRunning(false);
-          setElapsed(0);
-          setEpiRunning(false);
-          setEpiRemaining(EPI_DURATION);
-          setLog([]);
-          setCheckedHT({});
-        },
-      },
-    ]);
+  const handleEpi = () => {
+    setEpiTime(240);
+    setEpiActive(true);
+    logEvent("Epinephrine 1mg IV");
   };
 
-  const resetEpiTimer = () => {
-    setEpiRemaining(EPI_DURATION);
-    setEpiRunning(true);
+  const handleAmio = () => {
+    const dose = amioDoseCount === 0 ? "300mg" : "150mg";
+    setAmioDoseCount((c) => c + 1);
+    logEvent(`Amiodarone ${dose} IV`);
   };
 
-  const logDrug = (drug: string) => {
-    addLog(drug);
-    if (drug === 'Epi 1mg') {
-      resetEpiTimer();
-    }
+  const epiDue = epiActive && epiTime === 0 && caseRunning;
+
+  const toggleH = (item: string) => {
+    setCheckedHs((prev) => {
+      const next = new Set(prev);
+      next.has(item) ? next.delete(item) : next.add(item);
+      return next;
+    });
   };
 
-  const toggleHT = (item: string) => {
-    setCheckedHT((prev) => ({ ...prev, [item]: !prev[item] }));
+  const toggleT = (item: string) => {
+    setCheckedTs((prev) => {
+      const next = new Set(prev);
+      next.has(item) ? next.delete(item) : next.add(item);
+      return next;
+    });
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      {/* Case timer */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Case Timer</Text>
-        <Text style={styles.timerText}>{formatTime(elapsed)}</Text>
-        <View style={styles.buttonRow}>
-          {!caseRunning ? (
-            <Pressable style={[styles.button, styles.buttonGreen]} onPress={startCase}>
-              <Text style={styles.buttonText}>{elapsed === 0 ? 'Start' : 'Resume'}</Text>
-            </Pressable>
-          ) : (
-            <Pressable style={[styles.button, styles.buttonAmber]} onPress={pauseCase}>
-              <Text style={styles.buttonText}>Pause</Text>
-            </Pressable>
-          )}
-          <Pressable style={[styles.button, styles.buttonRed]} onPress={resetCase}>
-            <Text style={styles.buttonText}>Reset</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Epi timer */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Epi Timer (4 min)</Text>
-        <Text
-          style={[
-            styles.timerText,
-            epiRemaining <= 30 && styles.timerTextUrgent,
-          ]}
-        >
-          {formatTime(epiRemaining)}
-        </Text>
-        <View style={styles.buttonRow}>
+    <>
+      <Stack.Screen options={{ title: "Code Blue / ACLS" }} />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {/* Timers */}
+        <View style={styles.timerRow}>
+          <View style={styles.timerCard}>
+            <Text style={styles.timerLabel}>Case Time</Text>
+            <Text style={styles.timerValue}>{formatTime(totalSeconds)}</Text>
+          </View>
           <Pressable
-            style={[styles.button, styles.buttonBlue]}
-            onPress={() => setEpiRunning((r) => !r)}
+            style={[styles.epiCard, epiDue && styles.epiDue]}
+            onPress={handleEpi}
           >
-            <Text style={styles.buttonText}>{epiRunning ? 'Pause' : 'Start'}</Text>
-          </Pressable>
-          <Pressable style={[styles.button, styles.buttonSlate]} onPress={resetEpiTimer}>
-            <Text style={styles.buttonText}>Reset</Text>
+            <Text style={styles.timerLabel}>Next Epi</Text>
+            <Text style={[styles.timerValue, epiDue && styles.epiDueText]}>
+              {epiActive ? (epiDue ? "DUE NOW" : formatTime(epiTime)) : "—"}
+            </Text>
+            {epiDue && <Text style={styles.epiDueLabel}>GIVE EPI</Text>}
           </Pressable>
         </View>
-      </View>
 
-      {/* Drug buttons */}
-      <Text style={styles.sectionHeading}>Drugs</Text>
-      <View style={styles.drugGrid}>
-        {DRUGS.map((drug) => (
-          <Pressable key={drug} style={styles.drugButton} onPress={() => logDrug(drug)}>
-            <Text style={styles.drugButtonText}>{drug}</Text>
+        {/* Case Control */}
+        {!caseRunning ? (
+          <Pressable style={styles.startButton} onPress={startCase}>
+            <Text style={styles.startButtonText}>Start Case</Text>
           </Pressable>
-        ))}
-      </View>
-
-      {/* H's and T's */}
-      <Text style={styles.sectionHeading}>H's &amp; T's</Text>
-      <View style={styles.card}>
-        {HS_AND_TS.map((item) => (
-          <Pressable key={item} style={styles.htRow} onPress={() => toggleHT(item)}>
-            <View style={[styles.checkbox, checkedHT[item] && styles.checkboxChecked]}>
-              {checkedHT[item] && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-            <Text style={[styles.htText, checkedHT[item] && styles.htTextChecked]}>
-              {item}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {/* Case log */}
-      <Text style={styles.sectionHeading}>Case Log</Text>
-      <View style={styles.card}>
-        {log.length === 0 ? (
-          <Text style={styles.emptyLogText}>No events logged yet.</Text>
         ) : (
-          log.map((entry) => (
-            <View key={entry.id} style={styles.logRow}>
-              <Text style={styles.logTime}>{entry.time}</Text>
-              <Text style={styles.logLabel}>{entry.label}</Text>
-            </View>
-          ))
+          <Pressable style={styles.stopButton} onPress={stopCase}>
+            <Text style={styles.stopButtonText}>Stop Case</Text>
+          </Pressable>
         )}
-      </View>
-    </ScrollView>
+
+        {/* Drug Buttons */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Medications</Text>
+          <View style={styles.drugGrid}>
+            <Pressable style={[styles.drugButton, styles.drugEpi]} onPress={handleEpi} disabled={!caseRunning}>
+              <Text style={styles.drugLabel}>Epinephrine</Text>
+              <Text style={styles.drugDose}>1mg IV</Text>
+            </Pressable>
+            <Pressable style={[styles.drugButton, styles.drugAmio]} onPress={handleAmio} disabled={!caseRunning}>
+              <Text style={styles.drugLabel}>Amiodarone</Text>
+              <Text style={styles.drugDose}>{amioDoseCount === 0 ? "300mg" : "150mg"} IV</Text>
+            </Pressable>
+            <Pressable style={[styles.drugButton, styles.drugLido]} onPress={() => logEvent("Lidocaine 1–1.5 mg/kg IV")} disabled={!caseRunning}>
+              <Text style={styles.drugLabel}>Lidocaine</Text>
+              <Text style={styles.drugDose}>1–1.5 mg/kg</Text>
+            </Pressable>
+            <Pressable style={[styles.drugButton, styles.drugBicarb]} onPress={() => logEvent("Sodium Bicarbonate 1 AMP IV")} disabled={!caseRunning}>
+              <Text style={styles.drugLabel}>NaHCO₃</Text>
+              <Text style={styles.drugDose}>1 AMP IV</Text>
+            </Pressable>
+            <Pressable style={[styles.drugButton, styles.drugCalcium]} onPress={() => logEvent("Calcium Gluconate/Chloride 1g IV")} disabled={!caseRunning}>
+              <Text style={styles.drugLabel}>Calcium</Text>
+              <Text style={styles.drugDose}>1g IV</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* H's & T's */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Reversible Causes</Text>
+          <View style={styles.htRow}>
+            <View style={styles.htCol}>
+              <Text style={styles.htHeader}>H's</Text>
+              {HS.map((item) => (
+                <Pressable key={item} style={styles.htItem} onPress={() => toggleH(item)}>
+                  <View style={[styles.htCheck, checkedHs.has(item) && styles.htChecked]} />
+                  <Text style={[styles.htText, checkedHs.has(item) && styles.htTextChecked]}>{item}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.htCol}>
+              <Text style={styles.htHeader}>T's</Text>
+              {TS.map((item) => (
+                <Pressable key={item} style={styles.htItem} onPress={() => toggleT(item)}>
+                  <View style={[styles.htCheck, checkedTs.has(item) && styles.htChecked]} />
+                  <Text style={[styles.htText, checkedTs.has(item) && styles.htTextChecked]}>{item}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        {/* Case Log */}
+        {log.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Case Log</Text>
+            <View style={styles.logBox}>
+              {log.map((entry, i) => (
+                <View key={i} style={styles.logEntry}>
+                  <Text style={styles.logTime}>{entry.time}</Text>
+                  <Text style={styles.logMsg}>{entry.msg}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+      </ScrollView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#f1f5f9',
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  timerText: {
-    fontSize: 44,
-    fontWeight: '700',
-    color: '#0f172a',
-    textAlign: 'center',
-    marginVertical: 12,
-    fontVariant: ['tabular-nums'],
-  },
-  timerTextUrgent: {
-    color: '#dc2626',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  buttonGreen: { backgroundColor: '#16a34a' },
-  buttonAmber: { backgroundColor: '#d97706' },
-  buttonRed: { backgroundColor: '#dc2626' },
-  buttonBlue: { backgroundColor: '#1d4ed8' },
-  buttonSlate: { backgroundColor: '#64748b' },
-  sectionHeading: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginBottom: 10,
-  },
-  drugGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  drugButton: {
-    width: '48%',
-    backgroundColor: '#1e293b',
-    borderRadius: 10,
-    paddingVertical: 16,
-    paddingHorizontal: 10,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  drugButtonText: {
-    color: '#ffffff',
-    fontWeight: '600',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  htRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: '#94a3b8',
-    marginRight: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: '#1d4ed8',
-    borderColor: '#1d4ed8',
-  },
-  checkmark: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  htText: {
-    fontSize: 14,
-    color: '#334155',
-  },
-  htTextChecked: {
-    color: '#94a3b8',
-    textDecorationLine: 'line-through',
-  },
-  emptyLogText: {
-    color: '#94a3b8',
-    fontSize: 14,
-  },
-  logRow: {
-    flexDirection: 'row',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  logTime: {
-    width: 56,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '700',
-    color: '#1d4ed8',
-    fontSize: 13,
-  },
-  logLabel: {
-    flex: 1,
-    fontSize: 13,
-    color: '#334155',
-  },
+  container: { flex: 1, backgroundColor: "#f9fafb" },
+  content: { padding: 16, paddingBottom: 40 },
+  timerRow: { flexDirection: "row", gap: 12, marginBottom: 16 },
+  timerCard: { flex: 1, backgroundColor: "#1f2937", borderRadius: 16, padding: 16, alignItems: "center" },
+  epiCard: { flex: 1, backgroundColor: "#1f2937", borderRadius: 16, padding: 16, alignItems: "center" },
+  epiDue: { backgroundColor: "#dc2626" },
+  timerLabel: { color: "#9ca3af", fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 1 },
+  timerValue: { color: "#fff", fontSize: 32, fontWeight: "900", fontVariant: ["tabular-nums"], marginTop: 4 },
+  epiDueText: { color: "#fef2f2" },
+  epiDueLabel: { color: "#fca5a5", fontSize: 12, fontWeight: "700", marginTop: 4 },
+  startButton: { backgroundColor: "#16a34a", borderRadius: 12, padding: 16, alignItems: "center", marginBottom: 16 },
+  startButtonText: { color: "#fff", fontSize: 18, fontWeight: "800" },
+  stopButton: { backgroundColor: "#dc2626", borderRadius: 12, padding: 16, alignItems: "center", marginBottom: 16 },
+  stopButtonText: { color: "#fff", fontSize: 18, fontWeight: "800" },
+  section: { backgroundColor: "#fff", borderRadius: 16, borderWidth: 2, borderColor: "#e5e7eb", padding: 16, marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: "800", color: "#111827", marginBottom: 12 },
+  drugGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  drugButton: { width: "47%", borderRadius: 12, padding: 14, alignItems: "center" },
+  drugEpi: { backgroundColor: "#dc2626" },
+  drugAmio: { backgroundColor: "#2563eb" },
+  drugLido: { backgroundColor: "#7c3aed" },
+  drugBicarb: { backgroundColor: "#d97706" },
+  drugCalcium: { backgroundColor: "#059669" },
+  drugLabel: { color: "#fff", fontWeight: "800", fontSize: 15 },
+  drugDose: { color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 2 },
+  htRow: { flexDirection: "row", gap: 12 },
+  htCol: { flex: 1 },
+  htHeader: { fontSize: 16, fontWeight: "800", color: "#111827", marginBottom: 8 },
+  htItem: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+  htCheck: { width: 18, height: 18, borderRadius: 4, borderWidth: 2, borderColor: "#d1d5db" },
+  htChecked: { backgroundColor: "#16a34a", borderColor: "#16a34a" },
+  htText: { fontSize: 13, color: "#374151", flex: 1 },
+  htTextChecked: { color: "#6b7280", textDecorationLine: "line-through" },
+  logBox: { backgroundColor: "#f9fafb", borderRadius: 8, padding: 12, gap: 8 },
+  logEntry: { flexDirection: "row", gap: 10 },
+  logTime: { color: "#6b7280", fontSize: 13, fontWeight: "700", fontVariant: ["tabular-nums"], width: 40 },
+  logMsg: { color: "#111827", fontSize: 13, flex: 1 },
 });

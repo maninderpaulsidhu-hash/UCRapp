@@ -1,37 +1,45 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { Stack } from "expo-router";
+import { useEffect, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Feather } from "@expo/vector-icons";
 
 interface LogEntry {
   msg: string;
   time: string;
 }
 
-const HS = ["Hypovolemia", "Hypoxia", "Hydrogen ion (Acidosis)", "Hypo/Hyperkalemia", "Hypothermia"];
-const TS = ["Tension pneumothorax", "Tamponade (cardiac)", "Toxins", "Thrombosis (pulmonary)", "Thrombosis (coronary)"];
+const HS = [
+  "Hypovolemia",
+  "Hypoxia",
+  "Hydrogen ion (acidosis)",
+  "Hypo-/hyperkalemia",
+  "Hypothermia",
+];
+const TS = [
+  "Tension pneumothorax",
+  "Tamponade, cardiac",
+  "Toxins",
+  "Thrombosis, pulmonary",
+  "Thrombosis, coronary",
+];
 
-function formatTime(s: number) {
-  const m = Math.floor(s / 60).toString().padStart(2, "0");
-  const sec = (s % 60).toString().padStart(2, "0");
-  return `${m}:${sec}`;
+function getMilitaryTime() {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, "0");
+  const mins = String(now.getMinutes()).padStart(2, "0");
+  return `${hours}${mins}`;
 }
 
-function nowHHMM() {
-  const d = new Date();
-  return d.getHours().toString().padStart(2, "0") + d.getMinutes().toString().padStart(2, "0");
+function formatElapsed(s: number) {
+  const mins = Math.floor(s / 60);
+  const secs = s % 60;
+  return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
 }
 
-export default function ACLSScreen() {
-  const [caseRunning, setCaseRunning] = useState(false);
-  const [totalSeconds, setTotalSeconds] = useState(0);
-  const [epiTime, setEpiTime] = useState(0);
+export default function ACLSGuide() {
+  const [epiTime, setEpiTime] = useState(240);
   const [epiActive, setEpiActive] = useState(false);
+  const [totalSeconds, setTotalSeconds] = useState(0);
+  const [caseRunning, setCaseRunning] = useState(true);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [amioDoseCount, setAmioDoseCount] = useState(0);
   const [checkedHs, setCheckedHs] = useState<Set<string>>(new Set());
@@ -44,202 +52,325 @@ export default function ACLSScreen() {
   }, [caseRunning]);
 
   useEffect(() => {
-    if (!caseRunning || !epiActive || epiTime <= 0) return;
-    const id = setInterval(() => setEpiTime((t) => t - 1), 1000);
+    if (!epiActive || epiTime <= 0 || !caseRunning) return;
+    const id = setInterval(() => setEpiTime((s) => s - 1), 1000);
     return () => clearInterval(id);
-  }, [caseRunning, epiActive, epiTime]);
+  }, [epiActive, epiTime, caseRunning]);
 
-  const logEvent = (msg: string) => {
-    setLog((prev) => [{ msg, time: nowHHMM() }, ...prev]);
+  const toggleH = (h: string) => {
+    setCheckedHs((prev) => {
+      const next = new Set(prev);
+      next.has(h) ? next.delete(h) : next.add(h);
+      return next;
+    });
   };
 
-  const startCase = () => {
-    setTotalSeconds(0);
-    setEpiTime(0);
-    setEpiActive(false);
-    setLog([]);
-    setAmioDoseCount(0);
-    setCheckedHs(new Set());
-    setCheckedTs(new Set());
-    setCaseRunning(true);
-    logEvent("Case started");
+  const toggleT = (t: string) => {
+    setCheckedTs((prev) => {
+      const next = new Set(prev);
+      next.has(t) ? next.delete(t) : next.add(t);
+      return next;
+    });
+  };
+
+  const logEvent = (msg: string) => {
+    if (!caseRunning) return;
+    setLog((prev) => [{ msg, time: getMilitaryTime() }, ...prev]);
+  };
+
+  const handleEpiPush = () => {
+    logEvent("Epinephrine 1mg IV/IO");
+    setEpiTime(240);
+    setEpiActive(true);
   };
 
   const stopCase = () => {
     setCaseRunning(false);
-    logEvent(`Case ended — total time: ${formatTime(totalSeconds)}`);
+    setLog((prev) => [
+      { msg: `CASE STOPPED (Total Duration: ${formatElapsed(totalSeconds)})`, time: getMilitaryTime() },
+      ...prev,
+    ]);
   };
 
-  const handleEpi = () => {
-    setEpiTime(240);
-    setEpiActive(true);
-    logEvent("Epinephrine 1mg IV");
-  };
-
-  const handleAmio = () => {
-    const dose = amioDoseCount === 0 ? "300mg" : "150mg";
-    setAmioDoseCount((c) => c + 1);
-    logEvent(`Amiodarone ${dose} IV`);
-  };
-
-  const epiDue = epiActive && epiTime === 0 && caseRunning;
-
-  const toggleH = (item: string) => {
-    setCheckedHs((prev) => {
-      const next = new Set(prev);
-      next.has(item) ? next.delete(item) : next.add(item);
-      return next;
-    });
-  };
-
-  const toggleT = (item: string) => {
-    setCheckedTs((prev) => {
-      const next = new Set(prev);
-      next.has(item) ? next.delete(item) : next.add(item);
-      return next;
-    });
-  };
+  const epiDue = epiTime === 0 && caseRunning;
 
   return (
-    <>
-      <Stack.Screen options={{ title: "Code Blue / ACLS" }} />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {/* Timers */}
+    <ScrollView style={styles.screen}>
+      {/* Reversible Causes */}
+      <View style={styles.causesSection}>
+        <View style={styles.causesHeader}>
+          <Feather name="alert-triangle" size={18} color="#dc2626" />
+          <Text style={styles.causesTitle}>Reversible Causes</Text>
+        </View>
+        <View style={styles.causesGrid}>
+          <View style={styles.causesCol}>
+            <Text style={styles.hLabel}>H&apos;s</Text>
+            {HS.map((h) => (
+              <Pressable
+                key={h}
+                onPress={() => toggleH(h)}
+                style={[styles.causeItem, checkedHs.has(h) ? styles.hItemChecked : styles.hItem]}
+              >
+                <Text
+                  style={[styles.causeItemText, checkedHs.has(h) && styles.causeItemTextChecked]}
+                >
+                  • {h}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.causesCol}>
+            <Text style={styles.tLabel}>T&apos;s</Text>
+            {TS.map((t) => (
+              <Pressable
+                key={t}
+                onPress={() => toggleT(t)}
+                style={[styles.causeItem, checkedTs.has(t) ? styles.tItemChecked : styles.tItem]}
+              >
+                <Text
+                  style={[styles.causeItemText, checkedTs.has(t) && styles.causeItemTextChecked]}
+                >
+                  • {t}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
+
+      {/* Tools & Log */}
+      <View style={styles.toolsSection}>
         <View style={styles.timerRow}>
-          <View style={styles.timerCard}>
-            <Text style={styles.timerLabel}>Case Time</Text>
-            <Text style={styles.timerValue}>{formatTime(totalSeconds)}</Text>
+          <View>
+            <Text style={styles.timerLabel}>Total Case Time</Text>
+            <Text style={[styles.timerValue, !caseRunning && styles.timerValueStopped]}>
+              {formatElapsed(totalSeconds)}
+            </Text>
+          </View>
+          {caseRunning && (
+            <Pressable style={styles.stopButton} onPress={stopCase}>
+              <Feather name="square" size={12} color="#fff" />
+              <Text style={styles.stopButtonText}>Stop</Text>
+            </Pressable>
+          )}
+        </View>
+
+        <View style={[styles.epiCard, epiDue && styles.epiCardDue]}>
+          <Text style={styles.epiLabel}>Epinephrine</Text>
+          <Text style={styles.epiSubLabel}>1mg IV/IO q3-5m</Text>
+          <View style={styles.epiTimerRow}>
+            <Text style={styles.epiStatus}>{epiDue ? "DUE" : "EPI"}</Text>
+            <Text style={[styles.epiTime, epiDue && styles.epiTimeDue]}>
+              {formatElapsed(epiTime)}
+            </Text>
           </View>
           <Pressable
-            style={[styles.epiCard, epiDue && styles.epiDue]}
-            onPress={handleEpi}
+            style={[styles.epiPushButton, epiDue && styles.epiPushButtonDue, !caseRunning && styles.disabled]}
+            onPress={handleEpiPush}
+            disabled={!caseRunning}
           >
-            <Text style={styles.timerLabel}>Next Epi</Text>
-            <Text style={[styles.timerValue, epiDue && styles.epiDueText]}>
-              {epiActive ? (epiDue ? "DUE NOW" : formatTime(epiTime)) : "—"}
-            </Text>
-            {epiDue && <Text style={styles.epiDueLabel}>GIVE EPI</Text>}
+            <Text style={styles.epiPushButtonText}>PUSH</Text>
           </Pressable>
         </View>
 
-        {/* Case Control */}
-        {!caseRunning ? (
-          <Pressable style={styles.startButton} onPress={startCase}>
-            <Text style={styles.startButtonText}>Start Case</Text>
+        <View style={styles.drugGrid}>
+          <Pressable
+            style={[styles.drugButton, !caseRunning && styles.disabled]}
+            disabled={!caseRunning}
+            onPress={() => {
+              logEvent(`Amiodarone ${amioDoseCount === 0 ? "300mg" : "150mg"}`);
+              setAmioDoseCount((c) => c + 1);
+            }}
+          >
+            <Text style={styles.drugLabel}>Amiodarone</Text>
+            <Text style={styles.drugValue}>{amioDoseCount === 0 ? "300mg" : "150mg"}</Text>
           </Pressable>
-        ) : (
-          <Pressable style={styles.stopButton} onPress={stopCase}>
-            <Text style={styles.stopButtonText}>Stop Case</Text>
+          <Pressable
+            style={[styles.drugButton, !caseRunning && styles.disabled]}
+            disabled={!caseRunning}
+            onPress={() => logEvent("Lidocaine 1-1.5 mg/kg")}
+          >
+            <Text style={styles.drugLabel}>Lidocaine</Text>
+            <Text style={styles.drugValue}>1-1.5 mg/kg</Text>
           </Pressable>
-        )}
-
-        {/* Drug Buttons */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Medications</Text>
-          <View style={styles.drugGrid}>
-            <Pressable style={[styles.drugButton, styles.drugEpi]} onPress={handleEpi} disabled={!caseRunning}>
-              <Text style={styles.drugLabel}>Epinephrine</Text>
-              <Text style={styles.drugDose}>1mg IV</Text>
-            </Pressable>
-            <Pressable style={[styles.drugButton, styles.drugAmio]} onPress={handleAmio} disabled={!caseRunning}>
-              <Text style={styles.drugLabel}>Amiodarone</Text>
-              <Text style={styles.drugDose}>{amioDoseCount === 0 ? "300mg" : "150mg"} IV</Text>
-            </Pressable>
-            <Pressable style={[styles.drugButton, styles.drugLido]} onPress={() => logEvent("Lidocaine 1–1.5 mg/kg IV")} disabled={!caseRunning}>
-              <Text style={styles.drugLabel}>Lidocaine</Text>
-              <Text style={styles.drugDose}>1–1.5 mg/kg</Text>
-            </Pressable>
-            <Pressable style={[styles.drugButton, styles.drugBicarb]} onPress={() => logEvent("Sodium Bicarbonate 1 AMP IV")} disabled={!caseRunning}>
-              <Text style={styles.drugLabel}>NaHCO₃</Text>
-              <Text style={styles.drugDose}>1 AMP IV</Text>
-            </Pressable>
-            <Pressable style={[styles.drugButton, styles.drugCalcium]} onPress={() => logEvent("Calcium Gluconate/Chloride 1g IV")} disabled={!caseRunning}>
-              <Text style={styles.drugLabel}>Calcium</Text>
-              <Text style={styles.drugDose}>1g IV</Text>
-            </Pressable>
-          </View>
+          <Pressable
+            style={[styles.drugButton, !caseRunning && styles.disabled]}
+            disabled={!caseRunning}
+            onPress={() => logEvent("Sodium Bicarb 1 AMP")}
+          >
+            <Text style={styles.drugLabel}>NaHCO3</Text>
+            <Text style={styles.drugValue}>1 AMP</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.drugButton, !caseRunning && styles.disabled]}
+            disabled={!caseRunning}
+            onPress={() => logEvent("Calcium (1g Glu/Cl)")}
+          >
+            <Text style={styles.drugLabel}>Calcium</Text>
+            <Text style={styles.drugValue}>1g Glu/Cl</Text>
+          </Pressable>
         </View>
 
-        {/* H's & T's */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Reversible Causes</Text>
-          <View style={styles.htRow}>
-            <View style={styles.htCol}>
-              <Text style={styles.htHeader}>H's</Text>
-              {HS.map((item) => (
-                <Pressable key={item} style={styles.htItem} onPress={() => toggleH(item)}>
-                  <View style={[styles.htCheck, checkedHs.has(item) && styles.htChecked]} />
-                  <Text style={[styles.htText, checkedHs.has(item) && styles.htTextChecked]}>{item}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={styles.htCol}>
-              <Text style={styles.htHeader}>T's</Text>
-              {TS.map((item) => (
-                <Pressable key={item} style={styles.htItem} onPress={() => toggleT(item)}>
-                  <View style={[styles.htCheck, checkedTs.has(item) && styles.htChecked]} />
-                  <Text style={[styles.htText, checkedTs.has(item) && styles.htTextChecked]}>{item}</Text>
-                </Pressable>
-              ))}
-            </View>
+        <View style={styles.logBox}>
+          <View style={styles.logHeader}>
+            <Text style={styles.logHeaderText}>Case Log</Text>
+            <Feather name="clock" size={14} color="#4b5563" />
           </View>
+          {log.map((entry, i) => (
+            <View key={i} style={styles.logRow}>
+              <Text style={styles.logTime}>{entry.time}</Text>
+              <Text style={[styles.logMsg, entry.msg.includes("STOPPED") && styles.logMsgStopped]}>
+                {entry.msg}
+              </Text>
+            </View>
+          ))}
         </View>
-
-        {/* Case Log */}
-        {log.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Case Log</Text>
-            <View style={styles.logBox}>
-              {log.map((entry, i) => (
-                <View key={i} style={styles.logEntry}>
-                  <Text style={styles.logTime}>{entry.time}</Text>
-                  <Text style={styles.logMsg}>{entry.msg}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-      </ScrollView>
-    </>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f9fafb" },
-  content: { padding: 16, paddingBottom: 40 },
-  timerRow: { flexDirection: "row", gap: 12, marginBottom: 16 },
-  timerCard: { flex: 1, backgroundColor: "#1f2937", borderRadius: 16, padding: 16, alignItems: "center" },
-  epiCard: { flex: 1, backgroundColor: "#1f2937", borderRadius: 16, padding: 16, alignItems: "center" },
-  epiDue: { backgroundColor: "#dc2626" },
-  timerLabel: { color: "#9ca3af", fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 1 },
-  timerValue: { color: "#fff", fontSize: 32, fontWeight: "900", fontVariant: ["tabular-nums"], marginTop: 4 },
-  epiDueText: { color: "#fef2f2" },
-  epiDueLabel: { color: "#fca5a5", fontSize: 12, fontWeight: "700", marginTop: 4 },
-  startButton: { backgroundColor: "#16a34a", borderRadius: 12, padding: 16, alignItems: "center", marginBottom: 16 },
-  startButtonText: { color: "#fff", fontSize: 18, fontWeight: "800" },
-  stopButton: { backgroundColor: "#dc2626", borderRadius: 12, padding: 16, alignItems: "center", marginBottom: 16 },
-  stopButtonText: { color: "#fff", fontSize: 18, fontWeight: "800" },
-  section: { backgroundColor: "#fff", borderRadius: 16, borderWidth: 2, borderColor: "#e5e7eb", padding: 16, marginBottom: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: "800", color: "#111827", marginBottom: 12 },
-  drugGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  drugButton: { width: "47%", borderRadius: 12, padding: 14, alignItems: "center" },
-  drugEpi: { backgroundColor: "#dc2626" },
-  drugAmio: { backgroundColor: "#2563eb" },
-  drugLido: { backgroundColor: "#7c3aed" },
-  drugBicarb: { backgroundColor: "#d97706" },
-  drugCalcium: { backgroundColor: "#059669" },
-  drugLabel: { color: "#fff", fontWeight: "800", fontSize: 15 },
-  drugDose: { color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 2 },
-  htRow: { flexDirection: "row", gap: 12 },
-  htCol: { flex: 1 },
-  htHeader: { fontSize: 16, fontWeight: "800", color: "#111827", marginBottom: 8 },
-  htItem: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
-  htCheck: { width: 18, height: 18, borderRadius: 4, borderWidth: 2, borderColor: "#d1d5db" },
-  htChecked: { backgroundColor: "#16a34a", borderColor: "#16a34a" },
-  htText: { fontSize: 13, color: "#374151", flex: 1 },
-  htTextChecked: { color: "#6b7280", textDecorationLine: "line-through" },
-  logBox: { backgroundColor: "#f9fafb", borderRadius: 8, padding: 12, gap: 8 },
-  logEntry: { flexDirection: "row", gap: 10 },
-  logTime: { color: "#6b7280", fontSize: 13, fontWeight: "700", fontVariant: ["tabular-nums"], width: 40 },
-  logMsg: { color: "#111827", fontSize: 13, flex: 1 },
+  screen: { flex: 1, backgroundColor: "#030712" },
+  causesSection: {
+    backgroundColor: "#f9fafb",
+    borderBottomWidth: 2,
+    borderBottomColor: "#1f2937",
+    padding: 20,
+  },
+  causesHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
+  causesTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#111827",
+    textTransform: "uppercase",
+    letterSpacing: -0.5,
+  },
+  causesGrid: { flexDirection: "row", gap: 16 },
+  causesCol: { flex: 1 },
+  hLabel: { fontSize: 13, fontWeight: "900", color: "#1e40af", marginBottom: 8 },
+  tLabel: { fontSize: 13, fontWeight: "900", color: "#b91c1c", marginBottom: 8 },
+  causeItem: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    marginBottom: 4,
+    borderWidth: 1,
+  },
+  hItem: { backgroundColor: "#fff", borderColor: "#60a5fa" },
+  hItemChecked: { backgroundColor: "#bfdbfe", borderColor: "#bfdbfe" },
+  tItem: { backgroundColor: "#fff", borderColor: "#f87171" },
+  tItemChecked: { backgroundColor: "#fecaca", borderColor: "#fecaca" },
+  causeItemText: { fontSize: 12, fontWeight: "700", color: "#111827" },
+  causeItemTextChecked: { textDecorationLine: "line-through", color: "#1e3a8a" },
+  toolsSection: { padding: 20, gap: 16 },
+  timerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#111827",
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1f2937",
+  },
+  timerLabel: {
+    color: "#6b7280",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  timerValue: { color: "#4ade80", fontSize: 30, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  timerValueStopped: { color: "#6b7280" },
+  stopButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#dc2626",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  stopButtonText: { color: "#fff", fontWeight: "900", fontSize: 12, textTransform: "uppercase" },
+  epiCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#374151",
+    backgroundColor: "#1f2937",
+  },
+  epiCardDue: { borderColor: "#dc2626", backgroundColor: "#450a0a" },
+  epiLabel: { color: "#9ca3af", fontSize: 13, fontWeight: "900", textTransform: "uppercase" },
+  epiSubLabel: { color: "#60a5fa", fontSize: 15, fontWeight: "700", marginTop: 2, marginBottom: 10 },
+  epiTimerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  epiStatus: { color: "#fff", fontSize: 17, fontWeight: "900" },
+  epiTime: { color: "#60a5fa", fontSize: 26, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  epiTimeDue: { color: "#ef4444" },
+  epiPushButton: {
+    backgroundColor: "#2563eb",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  epiPushButtonDue: { backgroundColor: "#dc2626" },
+  epiPushButtonText: { color: "#fff", fontWeight: "900", fontSize: 14 },
+  disabled: { opacity: 0.35 },
+  drugGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  drugButton: {
+    width: "47%",
+    padding: 12,
+    backgroundColor: "#1f2937",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#374151",
+  },
+  drugLabel: {
+    color: "#9ca3af",
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  drugValue: { color: "#fff", fontSize: 14, fontWeight: "900" },
+  logBox: {
+    backgroundColor: "#000",
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#1f2937",
+    minHeight: 120,
+  },
+  logHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderBottomColor: "#1f2937",
+    paddingBottom: 8,
+    marginBottom: 8,
+  },
+  logHeaderText: {
+    color: "#6b7280",
+    fontSize: 13,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  logRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingBottom: 6,
+    marginBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#111827",
+  },
+  logTime: { color: "#3b82f6", fontWeight: "900", fontSize: 13, fontVariant: ["tabular-nums"] },
+  logMsg: { color: "#d1d5db", fontSize: 13, fontStyle: "italic", flex: 1 },
+  logMsgStopped: { color: "#ef4444", fontWeight: "900", fontStyle: "normal" },
 });

@@ -1,31 +1,38 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack } from "expo-router";
+import { Feather } from "@expo/vector-icons";
 
 const SECTIONS = [
   {
     title: "SBMC Codes",
     color: "#2563eb",
+    headerBg: "#eff6ff",
+    badgeBg: "#dbeafe",
     items: [
       { room: "Closet", code: "89120" },
-      { room: "Call Room", code: "78287 (STATS)" },
-      { room: "OR Locker (Ladies)", code: "37150" },
+      { room: "Call Room", code: "78287", note: "STATS" },
+      { room: "OR Locker", code: "37150", note: "Ladies" },
       { room: "Procedure Equipment Room", code: "53153" },
       { room: "Line Cart SICU", code: "13145" },
     ],
   },
   {
     title: "GME Lock Codes",
-    color: "#7c3aed",
+    color: "#9333ea",
+    headerBg: "#faf5ff",
+    badgeBg: "#f3e8ff",
     items: [
-      { room: "Lecture Hall", code: "76677 (POOPS)" },
+      { room: "Lecture Hall", code: "76677", note: "POOPS" },
       { room: "Didactic", code: "20167" },
-      { room: "Hallway Restroom", code: "76677 (POOPS)" },
-      { room: "Kitchen Door", code: "3663 (FOOD)" },
+      { room: "Hallway Restroom", code: "76677", note: "POOPS" },
+      { room: "Kitchen Door", code: "3663", note: "FOOD" },
     ],
   },
   {
     title: "SMBC Codes",
     color: "#059669",
+    headerBg: "#ecfdf5",
+    badgeBg: "#d1fae5",
     items: [
       { room: "Workroom", code: "12345" },
       { room: "Sleep Room", code: "92404" },
@@ -42,22 +49,38 @@ export default function SBMCCodes() {
     <>
       <Stack.Screen options={{ title: "SBMC Codes" }} />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.pageTitle}>SBMC Codes</Text>
+        <View style={styles.titleRow}>
+          <Feather name="lock" size={26} color="#374151" />
+          <Text style={styles.pageTitle}>Door & Room Codes</Text>
+        </View>
+
         {SECTIONS.map((section) => (
-          <View key={section.title} style={[styles.card, { borderTopColor: section.color, borderTopWidth: 4 }]}>
-            <Text style={[styles.sectionTitle, { color: section.color }]}>{section.title}</Text>
+          <View key={section.title} style={styles.card}>
+            <View style={[styles.sectionHeader, { backgroundColor: section.headerBg }]}>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+            </View>
             {section.items.map((item, i) => (
-              <View key={i} style={[styles.codeRow, i < section.items.length - 1 && styles.codeRowBorder]}>
-                <Text style={styles.roomName}>{item.room}</Text>
-                <View style={[styles.codeBadge, { backgroundColor: section.color + "18" }]}>
+              <View
+                key={item.room}
+                style={[
+                  styles.codeRow,
+                  i < section.items.length - 1 && styles.codeRowBorder,
+                ]}
+              >
+                <Text style={styles.roomName}>
+                  {item.room}
+                  {item.note && <Text style={styles.roomNote}> ({item.note})</Text>}
+                </Text>
+                <View style={[styles.codeBadge, { backgroundColor: section.badgeBg }]}>
                   <Text style={[styles.codeText, { color: section.color }]}>{item.code}</Text>
                 </View>
               </View>
             ))}
           </View>
         ))}
+
         <Text style={styles.disclaimer}>
-          🔒 Confidential — for authorized personnel only
+          Keep these codes confidential — do not share outside the program.
         </Text>
       </ScrollView>
     </>
@@ -67,13 +90,29 @@ export default function SBMCCodes() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f9fafb" },
   content: { padding: 16, paddingBottom: 40 },
-  pageTitle: { fontSize: 34, fontWeight: "900", color: "#111827", marginBottom: 20, textTransform: "uppercase", letterSpacing: -0.5 },
-  card: { backgroundColor: "#fff", borderRadius: 16, borderWidth: 2, borderColor: "#e5e7eb", marginBottom: 16, overflow: "hidden" },
-  sectionTitle: { fontSize: 18, fontWeight: "800", paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 },
-  codeRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 20 },
+  pageTitle: { fontSize: 24, fontWeight: "700", color: "#111827", letterSpacing: -0.3 },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#e5e7eb",
+    marginBottom: 20,
+    overflow: "hidden",
+  },
+  sectionHeader: { paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" },
+  sectionTitle: { fontSize: 17, fontWeight: "700", color: "#111827" },
+  codeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
   codeRowBorder: { borderBottomWidth: 1, borderBottomColor: "#f3f4f6" },
-  roomName: { fontSize: 14, color: "#374151", flex: 1, fontWeight: "500" },
-  codeBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  codeText: { fontFamily: "monospace" as any, fontSize: 16, fontWeight: "700" },
-  disclaimer: { textAlign: "center", fontSize: 13, color: "#9ca3af", marginTop: 8 },
+  roomName: { fontSize: 13, color: "#1f2937", flex: 1, fontWeight: "500" },
+  roomNote: { fontSize: 12, color: "#6b7280", fontWeight: "400" },
+  codeBadge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8 },
+  codeText: { fontFamily: "monospace", fontSize: 16, fontWeight: "700", letterSpacing: 1 },
+  disclaimer: { textAlign: "center", fontSize: 12, color: "#9ca3af", paddingBottom: 16 },
 });
